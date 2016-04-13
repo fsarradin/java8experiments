@@ -24,95 +24,77 @@ public class Main {
     }
 
 
-    static <T> Matcher<T> match() {
-        return new Matcher<>();
+    static <T, R> MatchCase<T, R> match() {
+        return new MatchCase<>();
     }
 
 
-    static class Matcher<T> {
+    static class MatchCase<T, R> implements Function<T, R> {
 
-        <R> When<R> when(Predicate<? super T> predicate) {
-            return new When<>(predicate);
+        final List<Case> cases;
+
+        MatchCase() {
+            this(Collections.emptyList());
         }
 
-        <R> When<R> whenIs(Object pattern) {
+        MatchCase(List<Case> cases) {
+            this.cases = cases;
+        }
+
+
+        When when(Predicate<? super T> predicate) {
+            return new When(predicate, cases);
+        }
+
+        When whenIs(Object pattern) {
             return when(pattern::equals);
         }
 
-        <R> When<R> whenTypeIs(Class<?> cls) {
+        When whenTypeIs(Class<?> cls) {
             return when(v -> cls.isAssignableFrom(v.getClass()));
         }
 
-        <R> Otherwise<R> otherwise(Function<? super T, ? extends R> function) {
-            return new Otherwise<R>(function, Collections.emptyList());
+        Otherwise otherwise(Function<? super T, ? extends R> function) {
+            return new Otherwise(function, cases);
         }
 
 
-        class When<R> {
+        @Override
+        public R apply(T value) {
+            return cases.stream()
+                    .filter(c -> c.isApplicable(value))
+                    .findFirst()
+                    .map(c -> c.apply(value))
+                    .orElseThrow(IllegalArgumentException::new);
+        }
+
+
+        class When {
 
             final Predicate<? super T> predicate;
-            final List<Case<R>> cases;
+            final List<Case> cases;
 
-            When(Predicate<? super T> predicate) {
-                this(predicate, Collections.emptyList());
-            }
-
-            When(Predicate<? super T> predicate, List<Case<R>> cases) {
+            When(Predicate<? super T> predicate, List<Case> cases) {
                 this.predicate = predicate;
                 this.cases = cases;
             }
 
-            Then then(Function<T, ? extends R> function) {
-                List<Case<R>> cases = new ArrayList<>();
+            MatchCase<T, R> then(Function<T, ? extends R> function) {
+                List<Case> cases = new ArrayList<>();
                 cases.addAll(this.cases);
-                cases.add(new Case<>(When.this.predicate, function));
+                cases.add(new Case(When.this.predicate, function));
 
-                return new Then(cases);
-            }
-
-            class Then implements Function<T, R> {
-
-                final List<Case<R>> cases;
-
-                Then(List<Case<R>> cases) {
-                    this.cases = cases;
-                }
-
-                @Override
-                public R apply(T value) {
-                    return cases.stream()
-                            .filter(c -> c.isApplicable(value))
-                            .findFirst()
-                            .map(c -> c.apply(value))
-                            .orElseThrow(IllegalArgumentException::new);
-                }
-
-                When<R> when(Predicate<? super T> predicate) {
-                    return new When<R>(predicate, cases);
-                }
-
-                When<R> whenIs(Object pattern) {
-                    return when(pattern::equals);
-                }
-
-                When<R> whenTypeIs(Class<?> cls) {
-                    return when(v -> cls.isAssignableFrom(v.getClass()));
-                }
-
-                Otherwise<R> otherwise(Function<? super T, ? extends R> function) {
-                    return new Otherwise<R>(function, cases);
-                }
-
+                return new MatchCase<>(cases);
             }
 
         }
 
-        class Otherwise<R> implements Function<T, R> {
+        class Otherwise implements Function<T, R> {
 
             final Function<? super T, ? extends R> function;
-            final List<Case<R>> cases;
+            final List<Case> cases;
 
-            Otherwise(Function<? super T, ? extends R> function, List<Case<R>> cases) {
+            Otherwise(Function<? super T, ? extends R> function, List<Case> cases) {
                 this.function = function;
                 this.cases = cases;
             }
@@ -129,7 +111,7 @@ public class Main {
         }
 
 
-        class Case<R> implements Function<Object, R> {
+        class Case implements Function<Object, R> {
 
             final Predicate<Object> predicate;
             final Function<Object, ? extends R> function;
